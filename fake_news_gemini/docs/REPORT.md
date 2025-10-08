@@ -1,12 +1,12 @@
 # Fake News Detection using Gemini API — Project Report
 
 ## 1. Abstract
-This project detects whether a news article is real or fake using a classical machine learning approach (TF-IDF + Logistic Regression) and an LLM-based analysis with the Gemini API. A hybrid strategy combines both signals to improve reliability. We provide end-to-end preprocessing, training, evaluation, inference utilities, and an interactive Streamlit UI.
+This project detects whether a news article is real or fake using a classical machine learning approach (TF-IDF + Logistic Regression) and an LLM-based analysis with the Gemini API. A hybrid strategy combines both signals to improve reliability. We provide end-to-end preprocessing (including NLTK), training, evaluation, inference utilities, and an interactive Streamlit UI.
 
 ## 2. Introduction
 - Motivation: Rapid spread of misinformation and the need for automated assistance.
 - Goal: Build a robust, extensible pipeline that blends interpretable ML with LLM reasoning.
-- Contributions: Clean architecture, reproducible training/evaluation, Gemini wrapper, and a hybrid combiner.
+- Contributions: Clean architecture, reproducible training/evaluation, Gemini wrapper, NLTK preprocessing, and a hybrid combiner.
 
 ## 3. Dataset
 - Expected schema: CSV with `text` and `label` where `label` ∈ {`real`,`fake`}.
@@ -14,14 +14,15 @@ This project detects whether a news article is real or fake using a classical ma
 - Recommended real datasets: Kaggle fake news datasets, LIAR dataset, etc.
 
 ## 4. Preprocessing
-- Lowercasing, URL/HTML removal, non-alphanumeric filtering, whitespace normalization.
-- Implemented in `src/data/preprocess.py` with `clean_text` and `load_dataset`.
-- Ensures consistent inputs for vectorization and classification.
+- Normalization: lowercase, URL/HTML removal, non-alphanumeric filtering, whitespace normalization (`src/data/preprocess.py`).
+- NLTK Processing: tokenization, stopword removal, lemmatization via `NLTKPreprocessor` (`src/data/nltk_preprocessor.py`).
+- First-run resource downloads: `punkt`, `stopwords`, `wordnet`, `omw-1.4` (attempted automatically with graceful fallback).
 
 ## 5. Model: TF-IDF + Logistic Regression
 - Vectorizer: `TfidfVectorizer(stop_words='english', ngram_range=(1,2), min_df=1)`.
 - Classifier: `LogisticRegression(max_iter=1000)`.
-- Packaged as a single `sklearn` Pipeline and persisted via `joblib`.
+- Pipeline: `NLTKPreprocessor()` → `TF-IDF` → `LogReg`.
+- Persisted as a single `sklearn` Pipeline via `joblib`.
 - Training script: `src/models/train.py`.
 
 ## 6. Evaluation
@@ -75,7 +76,8 @@ This project detects whether a news article is real or fake using a classical ma
 ## 15. Module Map and Responsibilities
 - `config.py`: Environment configuration.
 - `src/data/preprocess.py`: Text normalization and dataset loader.
-- `src/models/train.py`: Train and persist TF-IDF + LR pipeline.
+- `src/data/nltk_preprocessor.py`: NLTK tokenization, stopword removal, lemmatization transformer.
+- `src/models/train.py`: Train and persist TF-IDF + LR pipeline including NLTK step.
 - `src/models/evaluate.py`: Validation metrics and reporting.
 - `src/inference/predict.py`: Load model and predict on raw text.
 - `src/services/gemini_client.py`: Gemini API client wrapper.
@@ -86,3 +88,4 @@ This project detects whether a news article is real or fake using a classical ma
 - scikit-learn documentation (`https://scikit-learn.org/`)
 - Streamlit documentation (`https://docs.streamlit.io/`)
 - Google Generative AI Python SDK (`https://ai.google.dev/gemini-api/docs`)
+- NLTK documentation (`https://www.nltk.org/`)

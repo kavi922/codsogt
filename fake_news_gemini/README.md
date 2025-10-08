@@ -6,7 +6,7 @@ A full Python project for detecting whether a news article is real or fake using
 - Classical ML pipeline: TF-IDF + Logistic Regression
 - Gemini API integration for text analysis and structured JSON outputs
 - Hybrid decision logic combining ML probabilities and Gemini reasoning
-- Dataset preprocessing and utilities
+- Dataset preprocessing with NLTK: tokenization, lemmatization, stopword removal
 - Model training, evaluation, and inference
 - Streamlit UI for single-article and CSV batch analysis
 - Simple sample dataset to get started
@@ -23,7 +23,8 @@ fake_news_gemini/
   └─ src/
       ├─ __init__.py
       ├─ data/
-      │   └─ preprocess.py
+      │   ├─ preprocess.py
+      │   └─ nltk_preprocessor.py
       ├─ inference/
       │   └─ predict.py
       ├─ models/
@@ -45,16 +46,24 @@ pip install -r requirements.txt
 3) Configure environment variables:
 - Copy `.env.example` to `.env` and fill in `GEMINI_API_KEY` if you plan to use the Gemini features.
 
+### NLTK First-Run Downloads
+On the first run, the pipeline attempts to download required NLTK resources if missing: `punkt`, `stopwords`, `wordnet`, `omw-1.4`. If your environment blocks downloads, pre-download them:
+```python
+import nltk
+for p in ["punkt","stopwords","wordnet","omw-1.4"]:
+    nltk.download(p)
+```
+
 ## Datasets
 - Expected CSV format: columns `text` and `label` where `label` ∈ {`real`, `fake`}.
 - A tiny `data/sample_news.csv` is included for demonstration only. For real experiments, use a larger dataset (e.g., Kaggle fake news datasets).
 
-## Preprocessing (src/data/preprocess.py)
-- Clean text: lowercase, remove URLs, HTML tags, numbers, excessive whitespace.
-- Load dataset with basic validation.
+## Preprocessing (src/data)
+- `preprocess.py`: normalization (lowercase, remove URLs/HTML/non-alphanumeric, collapse whitespace).
+- `nltk_preprocessor.py`: tokenization → stopword removal → lemmatization; integrated in the sklearn Pipeline.
 
 ## Model Training (src/models/train.py)
-- Pipeline: `TfidfVectorizer(stop_words='english', ngram_range=(1,2))` + `LogisticRegression(max_iter=1000)`.
+- Pipeline: `NLTKPreprocessor()` → `TfidfVectorizer(stop_words='english', ngram_range=(1,2))` → `LogisticRegression(max_iter=1000)`.
 - Saves a single `scikit-learn` Pipeline with both vectorizer and classifier using `joblib`.
 - CLI usage example (run from project root):
 ```bash
@@ -103,6 +112,7 @@ streamlit run app.py
 ## Module-by-Module Explanation
 - `config.py`: Loads environment variables (`GEMINI_API_KEY`, model name) and shared constants.
 - `src/data/preprocess.py`: Text cleaning helpers and dataset loader.
+- `src/data/nltk_preprocessor.py`: NLTK-based transformer for tokenization, stopwords, lemmatization.
 - `src/models/train.py`: End-to-end training script for TF-IDF + Logistic Regression pipeline, saving the trained model.
 - `src/models/evaluate.py`: Evaluation script for reporting classification metrics.
 - `src/inference/predict.py`: Loads the saved pipeline and exposes a single-text prediction function.

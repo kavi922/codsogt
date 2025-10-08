@@ -9,11 +9,13 @@ from sklearn.pipeline import Pipeline
 
 from config import CONFIG
 from src.data.preprocess import load_dataset
+from src.data.nltk_preprocessor import NLTKPreprocessor
 
 
 def build_pipeline() -> Pipeline:
     return Pipeline(
         steps=[
+            ("nltk", NLTKPreprocessor()),
             (
                 "tfidf",
                 TfidfVectorizer(stop_words="english", ngram_range=(1, 2), min_df=1),
