@@ -8,10 +8,12 @@ from config import CONFIG
 from src.inference.predict import load_model, predict_text
 from src.services.gemini_client import GeminiClient
 from src.services.hybrid_detector import HybridDetector
+from src.services.spacy_ner import SpacyNER
+from src.data.keywords import FINANCIAL_KEYWORDS, SCAM_INDICATOR_TERMS
 
 
 st.set_page_config(page_title="Fake News Detection (ML + Gemini)", layout="wide")
-st.title("Fake News Detection using Gemini API")
+st.title("Fake News & Bank Statement Detection using Gemini API")
 
 
 def _get_model(model_path: str):
@@ -31,7 +33,23 @@ def get_gemini_client() -> Optional[GeminiClient]:
 
 @st.cache_resource(show_spinner=False)
 def get_hybrid_detector():
-    return HybridDetector()
+    return HybridDetector(gemini_weight=0.5, ml_weight=0.5)
+
+
+@st.cache_resource(show_spinner=False)
+def get_ner():
+    return SpacyNER()
+
+
+def highlight_terms(text: str, terms: list[str]) -> str:
+    out = text
+    for term in terms:
+        if not term:
+            continue
+        out = out.replace(term, f"**{term}**")
+        out = out.replace(term.capitalize(), f"**{term.capitalize()}**")
+        out = out.replace(term.upper(), f"**{term.upper()}**")
+    return out
 
 
 with st.sidebar:
@@ -41,16 +59,16 @@ with st.sidebar:
     use_gemini = st.checkbox("Use Gemini", value=False)
     use_hybrid = st.checkbox("Use Hybrid (ML + Gemini)", value=False)
 
-    st.caption("Tip: Turn on Gemini or Hybrid after training the ML model and setting GEMINI_API_KEY in .env")
+    st.caption("Tip: Train the ML model and set GEMINI_API_KEY in .env for Gemini features")
 
-single_tab, batch_tab = st.tabs(["Single Article", "Batch CSV"])
+single_tab, batch_tab, admin_tab = st.tabs(["Single Input", "Batch CSV", "Admin / Retrain"])
 
 with single_tab:
-    st.subheader("Analyze Single Article")
-    article = st.text_area("Paste article text", height=220)
+    st.subheader("Analyze News or Bank Statement")
+    article = st.text_area("Paste content", height=220)
     if st.button("Analyze", type="primary"):
         if not article.strip():
-            st.warning("Please paste some article text.")
+            st.warning("Please paste some text.")
         else:
             try:
                 model = _get_model(model_path)
@@ -70,19 +88,55 @@ with single_tab:
                 else:
                     gemini_result = client.analyze_text(article)
 
+            combined = None
             if use_hybrid:
                 detector = get_hybrid_detector()
                 combined = detector.combine(ml_result, gemini_result)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if ml_result is not None:
+                    st.markdown("**ML Prediction**")
+                    st.json(ml_result)
+            with col2:
+                if gemini_result is not None:
+                    st.markdown("**Gemini Analysis**")
+                    st.json(gemini_result)
+
+            if combined is not None:
                 st.markdown("**Hybrid Decision**")
                 st.json(combined)
+                # Simple confidence bar
+                scores = combined.get("scores", {})
+                fake_score = float(scores.get("fake", 0.0))
+                real_score = float(scores.get("real", 0.0))
+                st.progress(min(1.0, max(fake_score, real_score)))
 
-            if ml_result is not None:
-                st.markdown("**ML Prediction**")
-                st.json(ml_result)
+            # Keyword highlighting and NER
+            st.subheader("Content Highlights")
+            ner = get_ner()
+            ents = ner.extract(article)
+            st.markdown("**Named Entities (financial)**")
+            st.write(ents)
+            st.markdown("**Keyword Highlighter**")
+            st.write("Financial keywords highlighted below:")
+            st.markdown(highlight_terms(article, FINANCIAL_KEYWORDS + SCAM_INDICATOR_TERMS))
 
-            if gemini_result is not None:
-                st.markdown("**Gemini Analysis**")
-                st.json(gemini_result)
+            # Feedback collection
+            st.subheader("Feedback")
+            user_label = st.selectbox("Mark this prediction as", ["", "real", "fake", "bank_fake"], index=0)
+            if st.button("Submit Feedback"):
+                if user_label:
+                    try:
+                        fb = pd.DataFrame([
+                            {"text": article, "label": user_label}
+                        ])
+                        fb.to_csv("data/feedback.csv", mode="a", index=False, header=False)
+                        st.success("Feedback recorded.")
+                    except Exception as e:
+                        st.error(f"Failed to record feedback: {e}")
+                else:
+                    st.info("Please choose a label.")
 
 with batch_tab:
     st.subheader("Batch Analyze CSV")
@@ -104,9 +158,13 @@ with batch_tab:
                     results.append(predict_text(model, t))
                 df_out = df.copy()
                 df_out["ml_label"] = [r["label"] for r in results]
-                df_out["prob_fake"] = [r["proba"]["fake"] for r in results]
-                df_out["prob_real"] = [r["proba"]["real"] for r in results]
+                df_out["prob_fake"] = [r["proba"].get("fake", 0.0) for r in results]
+                df_out["prob_real"] = [r["proba"].get("real", 0.0) for r in results]
                 st.dataframe(df_out.head(50))
+
+                # Simple chart
+                st.subheader("Prediction Summary")
+                st.bar_chart(df_out["ml_label"].value_counts())
 
                 if "label" in df_out.columns:
                     try:
@@ -119,3 +177,8 @@ with batch_tab:
                         st.warning(f"Could not compute metrics: {e}")
             else:
                 st.warning("Model not loaded.")
+
+with admin_tab:
+    st.subheader("Retraining Mode (Admin)")
+    st.write("Append verified data for retraining. Place CSVs under data/ and run the training scripts.")
+    st.code("python -m src.models.train_multi --data_path data/merged.csv --out_dir models")
